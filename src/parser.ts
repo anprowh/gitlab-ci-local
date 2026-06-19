@@ -418,11 +418,13 @@ function validateInterpolationKey (ctx: any) {
 
 function validateInterpolationFunctions (ctx: any) {
     const {interpolationFunctions, configFilePath} = ctx;
-    if (interpolationFunctions != "") {
+    if (interpolationFunctions != "" && !validateInterpolationFunctions.interpolationFunctionsWarningShown) {
+        validateInterpolationFunctions.interpolationFunctionsWarningShown = true;
         ctx.writeStreams?.stderr(chalk`{black.bgYellowBright  WARN } interpolation functions is currently not supported via gitlab-ci-local. Functions will just be a no-op.\n`);
     }
     assert(interpolationFunctions.split("|").length <= MAX_FUNCTIONS, chalk`This GitLab CI configuration is invalid: \`{blueBright ${configFilePath}}\`: too many functions in interpolation block.`);
 }
+validateInterpolationFunctions.interpolationFunctionsWarningShown = false;
 
 function validateInput (ctx: any) {
     const {configFilePath, interpolationKey, inputsSpecification} = ctx;
