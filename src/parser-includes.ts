@@ -19,6 +19,7 @@ type ParserIncludesInitOptions = {
     writeStreams: WriteStreams;
     gitData: GitData;
     fetchIncludes: boolean;
+    offline: boolean;
     variables: {[key: string]: string};
     expandVariables: boolean;
     maximumIncludes: number;
@@ -96,7 +97,7 @@ export class ParserIncludes {
             } else if (value["remote"]) {
                 promises.push(this.downloadIncludeRemote(cwd, stateDir, value["remote"], fetchIncludes, writeStreams));
             } else if (value["component"]) {
-                const component = this.parseIncludeComponent(value["component"], gitData);
+                const component = this.parseIncludeComponent(value["component"], gitData, opts);
                 componentParseCache.set(index, component);
                 if (!component.isLocal)
                 {
@@ -232,7 +233,7 @@ export class ParserIncludes {
         };
     }
 
-    static parseIncludeComponent (component: string, gitData: GitData): ParsedComponent {
+    static parseIncludeComponent (component: string, gitData: GitData, opts : ParserIncludesInitOptions): ParsedComponent {
         assert(!component.includes("://"), `This GitLab CI configuration is invalid: component: \`${component}\` should not contain protocol`);
         const pattern = /(?<domain>[^/:\s]+)(:(?<port>\d+))?\/(?<projectPath>.+)\/(?<componentName>[^@]+)@(?<ref>.+)/; // https://regexr.com/7v7hm
         const gitRemoteMatch = pattern.exec(component);
@@ -243,15 +244,40 @@ export class ParserIncludes {
         let ref = gitRemoteMatch.groups["ref"];
         const isLocalComponent = projectPath === `${gitData.remote.group}/${gitData.remote.project}` && ref === gitData.commit.SHA;
 
+        const {cwd, stateDir, writeStreams, offline} = opts;
+
+        // Refs cache is used in case there is no access to git remote.
+        // If it doesn't exist and there is no access - throw error
+        let refsCachePath = `${cwd}/${stateDir}/includes/${gitData.remote.host}/${projectPath}/refs-cache.txt`;
+
+
         if (!isLocalComponent) {
             const semanticVersionRangesPattern = /^\d+(\.\d+)?$/;
             if (ref == "~latest" || semanticVersionRangesPattern.test(ref)) {
+                const fetchRequired = !offline || !fs.pathExistsSync(refsCachePath);
                 // https://docs.gitlab.com/ci/components/#semantic-version-ranges
                 let stdout;
-                if (gitData.remote.schema == "git" || gitData.remote.schema == "ssh") {
-                    stdout = Utils.syncSpawn(["git", "ls-remote", "--tags", `git@${domain}:${projectPath}`]).stdout;
-                } else {
-                    stdout = Utils.syncSpawn(["git", "ls-remote", "--tags", `${gitData.remote.schema}://${domain}:${port ?? 443}/${projectPath}.git`]).stdout;
+                let shouldReadCache = !fetchRequired;
+                if (fetchRequired) {
+                    let runResult;
+                    if (gitData.remote.schema == "git" || gitData.remote.schema == "ssh") {
+                        runResult = Utils.syncSpawn(["git", "ls-remote", "--tags", `git@${domain}:${projectPath}`]);
+                    } else {
+                        runResult = Utils.syncSpawn(["git", "ls-remote", "--tags", `${gitData.remote.schema}://${domain}:${port ?? 443}/${projectPath}.git`]);
+                    }
+                    // If command failed - fallback to checking downloaded versions
+                    if (runResult.exitCode == 0) {
+                        stdout = runResult.stdout;
+                        fs.ensureFileSync(refsCachePath);
+                        fs.writeFileSync(refsCachePath, stdout);
+                    } else {
+                        writeStreams.memoStdout(chalk`{black.bgYellowBright  WARN } Can't get remote tags. Using cached ref list. (${refsCachePath})\n`);
+                        assert(fs.existsSync(refsCachePath), `Can't fetch remote refs and no ref cache available. Ensure you have access to the remote.\n${runResult.stderr}`);
+                        shouldReadCache = true;
+                    }
+                }
+                if (shouldReadCache) {
+                    stdout = fs.readFileSync(refsCachePath, {encoding: "utf8"});
                 }
                 assert(stdout);
                 const tags = stdout

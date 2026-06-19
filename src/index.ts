@@ -376,6 +376,11 @@ process.on("SIGUSR2", async () => {
             requiresArg: false,
             description: "Start a local docker registry and configure gitlab-ci-local containers to use that by default",
         })
+        .option("offline", {
+            type: "boolean",
+            requiresArg: false,
+            description: "Do not fetch anything",
+        })
         .completion("completion", false, (current: string, yargsArgv: any, completionFilter: any, done: (completions: string[]) => any) => {
             try {
                 if (current.startsWith("-")) {

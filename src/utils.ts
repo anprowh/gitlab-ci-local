@@ -42,8 +42,8 @@ export class Utils {
         return execa(cmdArgs[0], cmdArgs.slice(1), {cwd});
     }
 
-    static syncSpawn (cmdArgs: string[], cwd = process.cwd()): {stdout: string; stderr: string} {
-        return execa.sync(cmdArgs[0], cmdArgs.slice(1), {cwd});
+    static syncSpawn (cmdArgs: string[], cwd = process.cwd()): {stdout: string; stderr: string, exitCode: number} {
+        return execa.sync(cmdArgs[0], cmdArgs.slice(1), {cwd, reject: false});
     }
 
     static fsUrl (url: string): string {

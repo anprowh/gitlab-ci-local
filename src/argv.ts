@@ -363,6 +363,10 @@ export class Argv {
         return this.map.get("fetchIncludes") ?? false;
     }
 
+    get offline (): boolean {
+        return this.map.get("offline") ?? false;
+    }
+
     get mountCache (): boolean {
         return this.map.get("mountCache") ?? false;
     }
